@@ -1,3 +1,22 @@
-/node_modules
-/.env
-/public
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Environment
+.env
+backend/.env
+
+# Build hasil compile
+dist/
+build/
+
+# Log
+*.log
+npm-debug.log*
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
