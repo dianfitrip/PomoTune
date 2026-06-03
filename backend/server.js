@@ -1,32 +1,55 @@
 require('dotenv').config();
 const express = require('express');
-const mysql = require('mysql2/promise');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { Sequelize, DataTypes } = require('sequelize');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Koneksi Database
-const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME
+// 1. INISIALISASI ORM SEQUELIZE
+const sequelize = new Sequelize(
+    process.env.DB_NAME,
+    process.env.DB_USER,
+    process.env.DB_PASSWORD,
+    {
+        host: process.env.DB_HOST,
+        dialect: 'mysql',
+        logging: false, // Matikan log SQL di terminal agar outputnya bersih
+    }
+);
+
+// 2. DEFINISI MODEL (Tabel Users)
+// Sequelize akan otomatis membuat tabel ini jika belum ada di database
+const User = sequelize.define('User', {
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    email: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true
+    },
+    password: {
+        type: DataTypes.STRING,
+        allowNull: false
+    }
+}, {
+    tableName: 'users',
+    timestamps: true, // Otomatis mengurus kolom createdAt
+    createdAt: 'created_at',
+    updatedAt: false  // Kita belum butuh kolom updatedAt saat ini
 });
 
-// Tes Koneksi & Buat Tabel jika belum ada
-pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(100) NOT NULL,
-        email VARCHAR(100) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-`).then(() => console.log("✅ Database Terhubung & Tabel Users Siap")).catch(console.error);
+// 3. SINKRONISASI DATABASE
+sequelize.sync().then(() => {
+    console.log("✅ Database Terhubung & Tabel Users (ORM) Siap");
+}).catch(err => {
+    console.error("❌ Gagal menghubungkan ke database:", err);
+});
 
 // --- API ROUTES ---
 
@@ -35,16 +58,17 @@ app.post('/api/register', async (req, res) => {
     try {
         const { name, email, password } = req.body;
         
-        // Cek email apakah sudah terdaftar
-        const [existingUser] = await pool.query("SELECT * FROM users WHERE email = ?", [email]);
-        if (existingUser.length > 0) return res.status(400).json({ message: "Email sudah terdaftar!" });
+        // Cari user menggunakan metode ORM (findOne)
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) return res.status(400).json({ message: "Email sudah terdaftar!" });
 
         // Enkripsi Password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Simpan ke Database
-        await pool.query("INSERT INTO users (name, email, password) VALUES (?, ?, ?)", [name, email, hashedPassword]);
+        // Simpan ke Database menggunakan metode ORM (create)
+        await User.create({ name, email, password: hashedPassword });
+        
         res.status(201).json({ message: "Registrasi berhasil! Silakan login." });
     } catch (error) {
         res.status(500).json({ message: "Terjadi kesalahan server", error: error.message });
@@ -57,16 +81,14 @@ app.post('/api/login', async (req, res) => {
         const { email, password } = req.body;
 
         // Cari User
-        const [users] = await pool.query("SELECT * FROM users WHERE email = ?", [email]);
-        if (users.length === 0) return res.status(400).json({ message: "Email tidak ditemukan!" });
-
-        const user = users[0];
+        const user = await User.findOne({ where: { email } });
+        if (!user) return res.status(400).json({ message: "Email tidak ditemukan!" });
 
         // Cek Password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: "Password salah!" });
 
-        // Buat Token Login (Berlaku 24 Jam)
+        // Buat Token Login
         const token = jwt.sign({ id: user.id, name: user.name }, process.env.JWT_SECRET, { expiresIn: '24h' });
 
         res.json({
