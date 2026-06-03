@@ -12,9 +12,21 @@ const register = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        await User.create({ username, password: hashedPassword });
+        // Simpan user baru
+        const newUser = await User.create({ username, password: hashedPassword });
         
-        res.status(201).json({ message: "Registrasi berhasil! Silakan login." });
+        // Langsung buat token agar user bisa otomatis login
+        const token = jwt.sign(
+            { id: newUser.id, username: newUser.username }, 
+            process.env.JWT_SECRET, 
+            { expiresIn: '24h' }
+        );
+
+        res.status(201).json({ 
+            message: "Registrasi berhasil!",
+            token: token,
+            user: { id: newUser.id, username: newUser.username }
+        });
     } catch (error) {
         res.status(500).json({ message: "Terjadi kesalahan server", error: error.message });
     }

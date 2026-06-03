@@ -1,72 +1,198 @@
 import { create } from 'zustand';
 
-interface Task {
-  id: string;
+export interface Task {
+  id: string | number;
   text: string;
   completed: boolean;
+  category: string;
+  priority: 'Tinggi' | 'Sedang' | 'Rendah';
+  deadline: string | null;
 }
 
-interface AudioTrack {
-  id: string;
+export interface AudioTrack {
+  id: string | number;
   title: string;
-  url: string;
+  file_path: string; 
   category: 'binaural' | 'ambient' | 'campuran'; 
+}
+
+interface ProgressStats {
+  totalTasksCompleted: number;
+  totalSessions: number;
+  totalFocusMinutes: number;
 }
 
 interface StoreState {
   tasks: Task[];
-  addTask: (text: string) => void;
-  toggleTask: (id: string) => void;
-  deleteTask: (id: string) => void;
-  editTask: (id: string, newText: string) => void;
+  fetchTasks: () => Promise<void>;
+  addTask: (taskData: Partial<Task>) => Promise<void>;
+  toggleTask: (id: string | number) => Promise<void>;
+  deleteTask: (id: string | number) => Promise<void>;
 
   binauralTracks: AudioTrack[];
-  addBinauralTrack: (title: string, url: string, category: 'binaural' | 'ambient' | 'campuran') => void;
-  deleteBinauralTrack: (id: string) => void;
+  fetchAudioTracks: () => Promise<void>;
+  addBinauralTrack: (formData: FormData) => Promise<void>; 
+  deleteBinauralTrack: (id: string | number) => Promise<void>;
 
-  activeTrackId: string | null;
+  activeTrackId: string | number | null;
   isPlaying: boolean;
-  playTrack: (id: string) => void;
+  playTrack: (id: string | number) => void;
   pauseTrack: () => void;
 
-  // State untuk mengelola Sesi Fokus dari Tugas
   activeTaskId: string | null;
   setActiveTask: (id: string | null) => void;
   sessionConfig: { duration: number, audioId: string | null } | null;
   setSessionConfig: (config: { duration: number, audioId: string | null } | null) => void;
+
+  saveFocusSession: (sessionData: { task_id?: string | null, audio_id?: string | null, duration_minutes: number, status: 'completed' | 'interrupted' }) => Promise<void>;
+
+  // State untuk Statistik
+  progressStats: ProgressStats | null;
+  fetchProgressStats: () => Promise<void>;
 }
 
-export const useStore = create<StoreState>((set) => ({
-  tasks: [],
-  addTask: (text) => set((state) => ({
-    tasks: [...state.tasks, { id: Date.now().toString(), text, completed: false }]
-  })),
-  toggleTask: (id) => set((state) => ({
-    tasks: state.tasks.map(task => task.id === id ? { ...task, completed: !task.completed } : task)
-  })),
-  deleteTask: (id) => set((state) => ({
-    tasks: state.tasks.filter(task => task.id !== id),
-    activeTaskId: state.activeTaskId === id ? null : state.activeTaskId // Hapus status jika tugas dihapus
-  })),
-  editTask: (id, newText) => set((state) => ({
-    tasks: state.tasks.map(task => task.id === id ? { ...task, text: newText } : task)
-  })),
+const getAuthHeaders = () => ({
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${localStorage.getItem('token')}`
+});
 
-  binauralTracks: [
-    { id: '1', title: 'Alpha Focus (8-12 Hz)', url: '/audio/alpha-focus.mp3', category: 'binaural' },
-    { id: '2', title: 'Hujan Deras (Rain Sounds)', url: '/audio/rain-sounds.mp3', category: 'ambient' }
-  ],
-  addBinauralTrack: (title, url, category) => set((state) => ({
-    binauralTracks: [...state.binauralTracks, { id: Date.now().toString(), title, url, category }]
-  })),
-  deleteBinauralTrack: (id) => set((state) => {
-    const isDeletingActive = state.activeTrackId === id;
-    return {
-      binauralTracks: state.binauralTracks.filter(track => track.id !== id),
-      activeTrackId: isDeletingActive ? null : state.activeTrackId,
-      isPlaying: isDeletingActive ? false : state.isPlaying
-    };
-  }),
+const API_URL = 'http://localhost:5000/api/tasks';
+const AUDIO_API_URL = 'http://localhost:5000/api/audio';
+const SESSION_API_URL = 'http://localhost:5000/api/sessions';
+const PROGRESS_API_URL = 'http://localhost:5000/api/progress';
+
+const sortTasks = (tasks: Task[]): Task[] => {
+  const priorityWeight = { 'Tinggi': 1, 'Sedang': 2, 'Rendah': 3 };
+  
+  return [...tasks].sort((a, b) => {
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    if (priorityWeight[a.priority] !== priorityWeight[b.priority]) {
+      return priorityWeight[a.priority] - priorityWeight[b.priority];
+    }
+    if (a.deadline && b.deadline) {
+      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+    }
+    if (a.deadline) return -1;
+    if (b.deadline) return 1;
+    return 0;
+  });
+};
+
+export const useStore = create<StoreState>((set, get) => ({
+  tasks: [],
+  progressStats: null,
+  
+  fetchTasks: async () => {
+    try {
+      const response = await fetch(API_URL, { headers: getAuthHeaders() });
+      if (response.ok) {
+        const data = await response.json();
+        set({ tasks: sortTasks(data) });
+      }
+    } catch (error) { console.error("Gagal memuat tugas", error); }
+  },
+
+  fetchProgressStats: async () => {
+    try {
+      const response = await fetch(PROGRESS_API_URL, { headers: getAuthHeaders() });
+      if (response.ok) {
+        set({ progressStats: await response.json() });
+      }
+    } catch (error) { console.error("Gagal memuat statistik", error); }
+  },
+
+  addTask: async (taskData) => {
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(taskData)
+      });
+      if (response.ok) {
+        const newTask = await response.json();
+        set((state) => ({ tasks: sortTasks([...state.tasks, newTask]) }));
+      }
+    } catch (error) { console.error("Gagal menambah tugas", error); }
+  },
+
+  toggleTask: async (id) => {
+    const task = get().tasks.find(t => String(t.id) === String(id));
+    if (!task) return;
+
+    set((state) => ({
+      tasks: sortTasks(state.tasks.map(t => String(t.id) === String(id) ? { ...t, completed: !t.completed } : t))
+    }));
+
+    try {
+      await fetch(`${API_URL}/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ completed: !task.completed })
+      });
+      get().fetchProgressStats(); // Update stat ketika tugas selesai dicentang
+    } catch (error) {
+      set((state) => ({
+        tasks: sortTasks(state.tasks.map(t => String(t.id) === String(id) ? { ...t, completed: task.completed } : t))
+      }));
+    }
+  },
+
+  deleteTask: async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+      if (response.ok) {
+        set((state) => ({
+          tasks: state.tasks.filter(task => String(task.id) !== String(id)),
+          activeTaskId: state.activeTaskId === String(id) ? null : state.activeTaskId
+        }));
+        get().fetchProgressStats(); // Update stat jika tugas terhapus
+      }
+    } catch (error) { console.error("Gagal menghapus tugas", error); }
+  },
+
+  binauralTracks: [],
+  
+  fetchAudioTracks: async () => {
+    try {
+      const response = await fetch(AUDIO_API_URL, { 
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } 
+      });
+      if (response.ok) set({ binauralTracks: await response.json() });
+    } catch (error) { console.error("Gagal memuat audio", error); }
+  },
+
+  addBinauralTrack: async (formData) => {
+    try {
+      const response = await fetch(AUDIO_API_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }, 
+        body: formData
+      });
+      if (response.ok) {
+        const newTrack = await response.json();
+        set((state) => ({ binauralTracks: [...state.binauralTracks, newTrack] }));
+      }
+    } catch (error) { console.error("Gagal menambah audio", error); }
+  },
+
+  deleteBinauralTrack: async (id) => {
+    try {
+      const response = await fetch(`${AUDIO_API_URL}/${id}`, { 
+        method: 'DELETE', 
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } 
+      });
+      if (response.ok) {
+        set((state) => {
+          const isDeletingActive = String(state.activeTrackId) === String(id);
+          return {
+            binauralTracks: state.binauralTracks.filter(track => String(track.id) !== String(id)),
+            activeTrackId: isDeletingActive ? null : state.activeTrackId,
+            isPlaying: isDeletingActive ? false : state.isPlaying
+          };
+        });
+      }
+    } catch (error) { console.error("Gagal menghapus audio", error); }
+  },
 
   activeTrackId: null,
   isPlaying: false,
@@ -75,7 +201,19 @@ export const useStore = create<StoreState>((set) => ({
 
   activeTaskId: null,
   setActiveTask: (id) => set({ activeTaskId: id }),
-
   sessionConfig: null,
   setSessionConfig: (config) => set({ sessionConfig: config }),
+
+  saveFocusSession: async (sessionData) => {
+    try {
+      await fetch(SESSION_API_URL, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(sessionData)
+      });
+      get().fetchProgressStats(); // Update stat ketika sesi fokus selesai
+    } catch (error) {
+      console.error("Gagal menyimpan sesi fokus", error);
+    }
+  },
 }));
