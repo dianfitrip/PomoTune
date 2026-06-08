@@ -1,6 +1,6 @@
 // frontend/src/components/Settings.tsx
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, X, HelpCircle } from 'lucide-react';
 
 export function Settings() {
   const [oldPassword, setOldPassword] = useState('');
@@ -9,8 +9,11 @@ export function Settings() {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [username, setUsername] = useState('');
   
-  // State untuk kontrol Floating Card (Toast)
+  // State untuk Toast (Notifikasi Pojok)
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  
+  // State untuk Modal Konfirmasi
+  const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -28,22 +31,29 @@ export function Settings() {
     }
   }, []);
 
-  // Fungsi untuk menampilkan Toast lalu menghilangkannya setelah 3 detik
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3000); // Hilang otomatis setelah 3 detik
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
+  // Fungsi saat tombol "Simpan" ditekan di form (Memunculkan Modal)
+  const handlePreSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
       showToast('Kata sandi baru dan konfirmasi tidak cocok.', 'error');
       return;
     }
-    
+    setShowConfirm(true); 
+  };
+
+  // Fungsi yang benar-benar mengirim API ubah password
+  const executeChangePassword = async () => {
+    setShowConfirm(false); 
     setIsChangingPassword(true);
+    
     try {
-      const response = await fetch('http://localhost:5000/api/auth/change-password', {
+      // PERHATIKAN: URL sudah diperbaiki menjadi /api/change-password
+      const response = await fetch('http://localhost:5000/api/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +82,7 @@ export function Settings() {
   return (
     <main className="p-8 flex flex-col bg-[#FAFCFB] flex-1 overflow-y-auto relative">
       
-      {/* FLOATING CARD VALIDASI (TOAST) */}
+      {/* 1. FLOATING TOAST NOTIFICATION */}
       {toast && (
         <div className={`fixed top-8 right-8 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border bg-white animate-in slide-in-from-top-5 fade-in duration-300 ${toast.type === 'success' ? 'border-emerald-500 text-emerald-800' : 'border-red-500 text-red-800'}`}>
           {toast.type === 'success' ? (
@@ -84,6 +94,25 @@ export function Settings() {
           <button onClick={() => setToast(null)} className="ml-4 text-gray-400 hover:text-gray-600 transition-colors">
             <X size={18} />
           </button>
+        </div>
+      )}
+
+      {/* 2. MODAL KONFIRMASI UBAH PASSWORD */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-5">
+                <HelpCircle size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Konfirmasi Perubahan</h3>
+              <p className="text-gray-600 mb-8 font-medium">Apakah kamu yakin ingin mengubah kata sandi untuk akun ini?</p>
+              <div className="flex gap-3 w-full">
+                <button onClick={() => setShowConfirm(false)} className="flex-1 py-3 text-gray-600 font-semibold bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">Batal</button>
+                <button onClick={executeChangePassword} className="flex-1 py-3 text-white font-semibold bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-sm">Ya, Ubah</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -108,7 +137,8 @@ export function Settings() {
 
       <div className="max-w-2xl bg-white p-8 rounded-3xl border border-gray-200 shadow-sm">
         <h3 className="text-lg font-bold text-gray-800 mb-6">Ubah Kata Sandi</h3>
-        <form onSubmit={handleChangePassword} className="space-y-4">
+        
+        <form onSubmit={handlePreSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Kata Sandi Lama</label>
             <input 
