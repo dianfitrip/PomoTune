@@ -1,5 +1,6 @@
 // frontend/src/components/Settings.tsx
 import React, { useState, useEffect } from 'react';
+import { CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 export function Settings() {
   const [oldPassword, setOldPassword] = useState('');
@@ -7,6 +8,9 @@ export function Settings() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [username, setUsername] = useState('');
+  
+  // State untuk kontrol Floating Card (Toast)
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -24,10 +28,16 @@ export function Settings() {
     }
   }, []);
 
+  // Fungsi untuk menampilkan Toast lalu menghilangkannya setelah 3 detik
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      alert('Kata sandi baru dan konfirmasi tidak cocok.');
+      showToast('Kata sandi baru dan konfirmasi tidak cocok.', 'error');
       return;
     }
     
@@ -43,23 +53,40 @@ export function Settings() {
       });
       
       const data = await response.json();
+      
       if (response.ok) {
-        alert('Kata sandi berhasil diubah.');
+        showToast('Kata sandi berhasil diubah!', 'success');
         setOldPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } else {
-        alert(data.message || 'Gagal mengubah kata sandi.');
+        showToast(data.message || 'Gagal mengubah kata sandi.', 'error');
       }
     } catch (error) {
-      alert('Terjadi kesalahan pada server.');
+      showToast('Terjadi kesalahan pada server. Pastikan backend menyala.', 'error');
     } finally {
       setIsChangingPassword(false);
     }
   };
 
   return (
-    <main className="p-8 flex flex-col bg-[#FAFCFB] flex-1 overflow-y-auto">
+    <main className="p-8 flex flex-col bg-[#FAFCFB] flex-1 overflow-y-auto relative">
+      
+      {/* FLOATING CARD VALIDASI (TOAST) */}
+      {toast && (
+        <div className={`fixed top-8 right-8 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border bg-white animate-in slide-in-from-top-5 fade-in duration-300 ${toast.type === 'success' ? 'border-emerald-500 text-emerald-800' : 'border-red-500 text-red-800'}`}>
+          {toast.type === 'success' ? (
+            <CheckCircle2 size={24} className="text-emerald-500" />
+          ) : (
+            <AlertCircle size={24} className="text-red-500" />
+          )}
+          <p className="font-semibold">{toast.message}</p>
+          <button onClick={() => setToast(null)} className="ml-4 text-gray-400 hover:text-gray-600 transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
       <header className="mb-8">
         <h2 className="text-xl font-bold text-gray-800">Pengaturan Akun</h2>
         <p className="text-sm text-gray-500 mt-1 font-medium">Kelola profil dan keamanan akun Anda di sini.</p>

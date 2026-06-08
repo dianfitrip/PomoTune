@@ -60,25 +60,43 @@ const login = async (req, res) => {
 
 const changePassword = async (req, res) => {
     try {
-        // Mengambil ID user dari token (membutuhkan authMiddleware)
         const userId = req.user.id; 
         const { oldPassword, newPassword } = req.body;
 
-        const user = await User.findByPk(userId); 
-        if (!user) return res.status(404).json({ message: "User tidak ditemukan!" });
+        if (!oldPassword || !newPassword) {
+            return res.status(400).json({ message: "Kata sandi lama dan baru wajib diisi!" });
+        }
 
+        // Cari user di database
+        const user = await User.findOne({ where: { id: userId } }); 
+        if (!user) {
+            return res.status(404).json({ message: "Sesi tidak valid, pengguna tidak ditemukan." });
+        }
+
+        // Cek kecocokan password lama
         const isMatch = await bcrypt.compare(oldPassword, user.password);
-        if (!isMatch) return res.status(400).json({ message: "Kata sandi lama salah!" });
+        if (!isMatch) {
+            return res.status(400).json({ message: "Kata sandi lama yang Anda masukkan salah!" });
+        }
 
+        // Hash password baru
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-        user.password = hashedPassword;
-        await user.save();
+        // Lakukan pembaruan langsung ke database
+        const [updatedRows] = await User.update(
+            { password: hashedPassword },
+            { where: { id: userId } }
+        );
+
+        if (updatedRows === 0) {
+             return res.status(400).json({ message: "Gagal menyimpan perubahan ke database." });
+        }
 
         res.json({ message: "Kata sandi berhasil diubah!" });
     } catch (error) {
-        res.status(500).json({ message: "Terjadi kesalahan server", error: error.message });
+        console.error("Error ubah password:", error); 
+        res.status(500).json({ message: "Kesalahan server: " + error.message });
     }
 };
 
