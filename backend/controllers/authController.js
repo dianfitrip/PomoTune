@@ -58,4 +58,28 @@ const login = async (req, res) => {
     }
 };
 
-module.exports = { register, login };
+const changePassword = async (req, res) => {
+    try {
+        // Mengambil ID user dari token (membutuhkan authMiddleware)
+        const userId = req.user.id; 
+        const { oldPassword, newPassword } = req.body;
+
+        const user = await User.findByPk(userId); 
+        if (!user) return res.status(404).json({ message: "User tidak ditemukan!" });
+
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+        if (!isMatch) return res.status(400).json({ message: "Kata sandi lama salah!" });
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        user.password = hashedPassword;
+        await user.save();
+
+        res.json({ message: "Kata sandi berhasil diubah!" });
+    } catch (error) {
+        res.status(500).json({ message: "Terjadi kesalahan server", error: error.message });
+    }
+};
+
+module.exports = { register, login, changePassword };

@@ -1,10 +1,12 @@
+// frontend/src/components/Dashboard.tsx
 import React, { Suspense, useState, useRef, useEffect } from 'react';
 import { 
   LayoutDashboard, ListTodo, BarChart2, Headphones, Music, 
-  Settings, Plus, Play, Pause, Volume2, Brain, Activity, Clock, X, Trash2, Disc3, LogOut, CheckCircle2, Trophy, Target, Flame
+  Settings as SettingsIcon, Plus, Play, Pause, Volume2, Brain, Activity, Clock, X, Trash2, Disc3, LogOut, CheckCircle2, Trophy, Target, Flame
 } from 'lucide-react';
 import { PomodoroTimer } from './PomodoroTimer';
 import { TodoList } from './TodoList';
+import { Settings } from './Settings';
 import { useStore } from '../store/useStore';
 
 export default function Dashboard() {
@@ -36,7 +38,7 @@ export default function Dashboard() {
     binauralTracks, fetchAudioTracks, addBinauralTrack, deleteBinauralTrack, 
     activeTrackId, isPlaying, playTrack, pauseTrack,
     setActiveTask, setSessionConfig,
-    progressStats, fetchProgressStats // Diimpor untuk menu progres
+    progressStats, fetchProgressStats
   } = useStore();
 
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -49,7 +51,7 @@ export default function Dashboard() {
     fetchProgressStats();
   }, [fetchTasks, fetchAudioTracks, fetchProgressStats]);
 
-  // Efek perpindahan halaman (jika masuk ke menu progres, perbarui data progres)
+  // Efek perpindahan halaman
   useEffect(() => {
     if (activeView === 'progress') {
       fetchProgressStats();
@@ -143,6 +145,16 @@ export default function Dashboard() {
               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-4">Audio</p>
               <ul className="space-y-2">
                 <li><button onClick={() => setActiveView('audio-manager')} className={getNavClass('audio-manager')}><Disc3 size={20} /> Kelola Audio</button></li>
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-4">Akun</p>
+              <ul className="space-y-2">
+                <li>
+                  <button onClick={() => setActiveView('settings')} className={getNavClass('settings')}>
+                    <SettingsIcon size={20} /> Pengaturan
+                  </button>
+                </li>
               </ul>
             </div>
             
@@ -263,6 +275,9 @@ export default function Dashboard() {
             </div>
           </main>
         )}
+
+        {/* PANEL TENGAH: Pengaturan */}
+        {activeView === 'settings' && <Settings />}
 
         {/* PANEL KANAN: AUDIO & TIMER */}
         {(activeView === 'dashboard') && (
